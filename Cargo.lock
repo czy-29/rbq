@@ -870,7 +870,17 @@ dependencies = [
 name = "rbq"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "axum",
+ "dashmap",
+ "ricq",
  "ricq-axum-api",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
