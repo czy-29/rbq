@@ -1,0 +1,3 @@
+[submodule "ricq"]
+	path = ricq
+	url = git@github.com:lz1998/ricq.git
