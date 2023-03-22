@@ -17,12 +17,18 @@ use tower_http::services::ServeDir;
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use ricq::client::event::{FriendMessageEvent, GroupMessageEvent};
 use ricq::client::{DefaultConnector, NetworkStatus};
 use ricq::ext::common::after_login;
 use ricq::ext::reconnect::{auto_reconnect, Credential};
 use ricq::handler::QEvent;
 use ricq::Client;
+use ricq::{
+    client::event::{FriendMessageEvent, GroupMessageEvent},
+    msg::{
+        elem::{Reply, Text},
+        MessageChain,
+    },
+};
 use ricq_axum_api::handler::{bot, password, qrcode};
 use ricq_axum_api::processor::Processor;
 use ricq_axum_api::u8_protocol::U8Protocol;
@@ -45,7 +51,11 @@ impl Processor for ClientProcessor {
         self.0.insert((uin, protocol), client.clone());
         after_login(&client).await;
 
+        // 此处暂时先都用println/eprintln，等以后再改为tracing
         tokio::spawn(async move {
+            const PING: &str = "rbq-ping";
+            let pong_msg = MessageChain::new(Text::new("pong".into()));
+
             while let Ok(event) = event_receiver.recv().await {
                 match event {
                     QEvent::GroupMessage(e) => {
@@ -53,33 +63,68 @@ impl Processor for ClientProcessor {
                             inner: message,
                             client,
                         } = e;
-                        tracing::info!(
-                            "GROUP_MSG, code: {}, content: {}",
-                            message.group_code,
-                            message.elements.to_string()
+                        let group_code = message.group_code;
+                        let msg_text = message.elements.to_string().trim().to_string();
+
+                        println!(
+                            "Recv GroupMessage: group_code: {}, msg_text: {}",
+                            group_code, msg_text
                         );
-                        client
-                            .send_group_message(message.group_code, message.elements)
-                            .await
-                            .ok();
+
+                        if msg_text == PING {
+                            let mut chain = pong_msg.clone();
+
+                            chain.with_reply(Reply {
+                                reply_seq: message.seqs[0],
+                                sender: message.from_uin,
+                                time: message.time,
+                                elements: message.elements,
+                            });
+
+                            match client.send_group_message(group_code, chain).await {
+                                Ok(mr) => {
+                                    println!(
+                                        "SendOk GroupMessage: group_code: {}, mr: {:?}",
+                                        group_code, mr
+                                    )
+                                }
+                                Err(err) => eprintln!(
+                                    "SendErr GroupMessage: group_code: {}, err: {:?}",
+                                    group_code, err
+                                ),
+                            }
+                        }
                     }
                     QEvent::FriendMessage(e) => {
                         let FriendMessageEvent {
                             inner: message,
                             client,
                         } = e;
-                        tracing::info!(
-                            "FRIEND_MSG, code: {}, content: {}",
-                            message.from_uin,
-                            message.elements.to_string()
+                        let from_uin = message.from_uin;
+                        let msg_text = message.elements.to_string().trim().to_string();
+
+                        println!(
+                            "Recv FriendMessage: from_uin: {}, msg_text: {}",
+                            from_uin, msg_text
                         );
-                        client
-                            .send_friend_message(message.from_uin, message.elements)
-                            .await
-                            .ok();
+
+                        if msg_text == PING {
+                            match client.send_friend_message(from_uin, pong_msg.clone()).await {
+                                Ok(mr) => {
+                                    println!(
+                                        "SendOk FriendMessage: target: {}, mr: {:?}",
+                                        from_uin, mr
+                                    )
+                                }
+                                Err(err) => eprintln!(
+                                    "SendErr FriendMessage: target: {}, err: {:?}",
+                                    from_uin, err
+                                ),
+                            }
+                        }
                     }
                     other => {
-                        tracing::info!("{:?}", other)
+                        println!("{:?}", other)
                     }
                 }
             }
