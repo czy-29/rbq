@@ -61,8 +61,7 @@ impl Processor for ClientProcessor {
 
             while let Ok(event) = event_receiver.recv().await {
                 match event {
-                    QEvent::GroupMessage(e) => {
-                        let GroupMessageEvent { inner: msg, client } = e;
+                    QEvent::GroupMessage(GroupMessageEvent { inner: msg, client }) => {
                         let group_code = msg.group_code;
                         let msg_text = msg.elements.to_string().trim().to_string();
 
@@ -95,8 +94,7 @@ impl Processor for ClientProcessor {
                             }
                         }
                     }
-                    QEvent::FriendMessage(e) => {
-                        let FriendMessageEvent { inner: msg, client } = e;
+                    QEvent::FriendMessage(FriendMessageEvent { inner: msg, client }) => {
                         let from_uin = msg.from_uin;
                         let msg_text = msg.elements.to_string().trim().to_string();
 
