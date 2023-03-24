@@ -112,6 +112,18 @@ impl Processor for ClientProcessor {
                             }
                         }
                     }
+                    QEvent::Login(uin) => {
+                        let subject = "新账号上线";
+                        let body = format!("账号{}已上线！", uin);
+
+                        eprintln!("{}：{}", subject, body);
+
+                        println!("正在发送邮件……");
+                        match notify_email(subject, &body).await {
+                            Ok(resp) => println!("邮件发送成功！服务器回应：{:?}", resp),
+                            Err(err) => eprintln!("邮件发送失败：{:?}", err),
+                        }
+                    }
                     QEvent::KickedOffline(KickedOfflineEvent {
                         inner: rpfo,
                         client,
