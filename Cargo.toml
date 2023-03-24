@@ -9,6 +9,7 @@ edition = "2021"
 async-trait = "0.1"
 axum = { version = "0.5", features = ["json"] }
 dashmap = "5.2"
+lettre = { version = "0.10.3", features = ["tokio1-native-tls"] }
 ricq = { path = "ricq/ricq"}
 ricq-axum-api = { path = "ricq/examples/ricq-axum-api"}
 time = { version = "0.3", features = ["macros", "local-offset"] }

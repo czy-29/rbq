@@ -114,21 +114,46 @@ impl Processor for ClientProcessor {
                     }
                     QEvent::KickedOffline(KickedOfflineEvent {
                         inner: rpfo,
-                        client: _,
+                        client,
                     }) => {
-                        eprintln!("被其他客户端踢下线：{:?}", rpfo);
+                        let subject = format!("账号{}被其他客户端踢下线", client.uin().await);
+                        let body = format!("{:?}", rpfo);
+
+                        eprintln!("{}：{}", subject, body);
+
+                        println!("正在发送邮件……");
+                        match notify_email(&subject, &body).await {
+                            Ok(resp) => println!("邮件发送成功！服务器回应：{:?}", resp),
+                            Err(err) => eprintln!("邮件发送失败：{:?}", err),
+                        }
                     }
                     QEvent::MSFOffline(MSFOfflineEvent {
                         inner: rmfo,
-                        client: _,
+                        client,
                     }) => {
-                        eprintln!("服务端强制下线：{:?}", rmfo);
+                        let subject = format!("账号{}被服务端强制下线", client.uin().await);
+                        let body = format!("{:?}", rmfo);
+
+                        eprintln!("{}：{}", subject, body);
+
+                        println!("正在发送邮件……");
+                        match notify_email(&subject, &body).await {
+                            Ok(resp) => println!("邮件发送成功！服务器回应：{:?}", resp),
+                            Err(err) => eprintln!("邮件发送失败：{:?}", err),
+                        }
                     }
-                    QEvent::ClientDisconnect(ClientDisconnect {
-                        inner: dr,
-                        client: _,
-                    }) => {
-                        eprintln!("网络原因/客户端主动掉线：{:?}", dr);
+                    QEvent::ClientDisconnect(ClientDisconnect { inner: dr, client }) => {
+                        let subject =
+                            format!("账号{}因网络原因/客户端主动掉线", client.uin().await);
+                        let body = format!("{:?}", dr);
+
+                        eprintln!("{}：{}", subject, body);
+
+                        println!("正在发送邮件……");
+                        match notify_email(&subject, &body).await {
+                            Ok(resp) => println!("邮件发送成功！服务器回应：{:?}", resp),
+                            Err(err) => eprintln!("邮件发送失败：{:?}", err),
+                        }
                     }
                     other => {
                         println!("收到其它消息：{:?}", other)
@@ -250,4 +275,30 @@ async fn main() {
 
 async fn handle_error(_: std::io::Error) -> impl axum::response::IntoResponse {
     (axum::http::StatusCode::NOT_FOUND, "出错了……")
+}
+
+mod creds;
+
+use lettre::{
+    message::header::ContentType,
+    transport::smtp::{response::Response, Error},
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+};
+
+// from_mailbox，to_mailbox，relay_server，get_creds四个函数需要自行提供
+async fn notify_email(subject: &str, body: &str) -> Result<Response, Error> {
+    let msg = Message::builder()
+        .from(creds::from_mailbox())
+        .to(creds::to_mailbox())
+        .subject(subject)
+        .header(ContentType::TEXT_PLAIN)
+        .body(String::from(body))
+        .unwrap();
+
+    let mailer: AsyncSmtpTransport<Tokio1Executor> =
+        AsyncSmtpTransport::<Tokio1Executor>::relay(creds::relay_server())?
+            .credentials(creds::get_creds())
+            .build();
+
+    mailer.send(msg).await
 }
