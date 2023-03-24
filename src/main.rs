@@ -23,7 +23,10 @@ use ricq::ext::reconnect::{auto_reconnect, Credential};
 use ricq::handler::QEvent;
 use ricq::Client;
 use ricq::{
-    client::event::{FriendMessageEvent, GroupMessageEvent},
+    client::event::{
+        ClientDisconnect, FriendMessageEvent, GroupMessageEvent, KickedOfflineEvent,
+        MSFOfflineEvent,
+    },
     msg::{
         elem::{Reply, Text},
         MessageChain,
@@ -59,78 +62,84 @@ impl Processor for ClientProcessor {
             while let Ok(event) = event_receiver.recv().await {
                 match event {
                     QEvent::GroupMessage(e) => {
-                        let GroupMessageEvent {
-                            inner: message,
-                            client,
-                        } = e;
-                        let group_code = message.group_code;
-                        let msg_text = message.elements.to_string().trim().to_string();
+                        let GroupMessageEvent { inner: msg, client } = e;
+                        let group_code = msg.group_code;
+                        let msg_text = msg.elements.to_string().trim().to_string();
 
                         println!(
-                            "Recv GroupMessage: group_code: {}, msg_text: {}",
-                            group_code, msg_text
+                            "收到群消息：群名：{}，群名片：{}，消息：{}",
+                            msg.group_name, msg.group_card, msg_text
                         );
 
                         if msg_text == PING {
                             let mut chain = pong_msg.clone();
 
                             chain.with_reply(Reply {
-                                reply_seq: message.seqs[0],
-                                sender: message.from_uin,
-                                time: message.time,
-                                elements: message.elements,
+                                reply_seq: msg.seqs[0],
+                                sender: msg.from_uin,
+                                time: msg.time,
+                                elements: msg.elements,
                             });
 
                             match client.send_group_message(group_code, chain).await {
                                 Ok(mr) => {
                                     println!(
-                                        "SendOk GroupMessage: group_code: {}, mr: {:?}",
+                                        "群消息发送成功：group_code: {}, mr: {:?}",
                                         group_code, mr
                                     )
                                 }
                                 Err(err) => eprintln!(
-                                    "SendErr GroupMessage: group_code: {}, err: {:?}",
+                                    "群消息发送失败：group_code: {}, err: {:?}",
                                     group_code, err
                                 ),
                             }
                         }
                     }
                     QEvent::FriendMessage(e) => {
-                        let FriendMessageEvent {
-                            inner: message,
-                            client,
-                        } = e;
-                        let from_uin = message.from_uin;
-                        let msg_text = message.elements.to_string().trim().to_string();
+                        let FriendMessageEvent { inner: msg, client } = e;
+                        let from_uin = msg.from_uin;
+                        let msg_text = msg.elements.to_string().trim().to_string();
 
-                        println!(
-                            "Recv FriendMessage: from_uin: {}, msg_text: {}",
-                            from_uin, msg_text
-                        );
+                        println!("收到好友消息：QQ号：{}，消息：{}", from_uin, msg_text);
 
                         if msg_text == PING {
                             match client.send_friend_message(from_uin, pong_msg.clone()).await {
                                 Ok(mr) => {
-                                    println!(
-                                        "SendOk FriendMessage: target: {}, mr: {:?}",
-                                        from_uin, mr
-                                    )
+                                    println!("好友消息发送成功：target: {}, mr: {:?}", from_uin, mr)
                                 }
                                 Err(err) => eprintln!(
-                                    "SendErr FriendMessage: target: {}, err: {:?}",
+                                    "好友消息发送失败：target: {}, err: {:?}",
                                     from_uin, err
                                 ),
                             }
                         }
                     }
+                    QEvent::KickedOffline(KickedOfflineEvent {
+                        inner: rpfo,
+                        client: _,
+                    }) => {
+                        eprintln!("被其他客户端踢下线：{:?}", rpfo);
+                    }
+                    QEvent::MSFOffline(MSFOfflineEvent {
+                        inner: rmfo,
+                        client: _,
+                    }) => {
+                        eprintln!("服务端强制下线：{:?}", rmfo);
+                    }
+                    QEvent::ClientDisconnect(ClientDisconnect {
+                        inner: dr,
+                        client: _,
+                    }) => {
+                        eprintln!("网络原因/客户端主动掉线：{:?}", dr);
+                    }
                     other => {
-                        println!("{:?}", other)
+                        println!("收到其它消息：{:?}", other)
                     }
                 }
             }
         });
 
-        // DONT BLOCK
+        // 不阻塞
         tokio::spawn(async move {
             network_join_handle.await.ok();
             auto_reconnect(
@@ -233,7 +242,7 @@ async fn main() {
                 .layer(Extension(ricq_axum_api))
                 .into_inner(),
         );
-    let addr = SocketAddr::from_str("0.0.0.0:9000").expect("failed to parse bind_addr");
+    let addr = SocketAddr::from_str("0.0.0.0:9000").expect("解析地址失败");
     println!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
@@ -242,5 +251,5 @@ async fn main() {
 }
 
 async fn handle_error(_: std::io::Error) -> impl axum::response::IntoResponse {
-    (axum::http::StatusCode::NOT_FOUND, "Something went wrong...")
+    (axum::http::StatusCode::NOT_FOUND, "出错了……")
 }
